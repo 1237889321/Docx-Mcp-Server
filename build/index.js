@@ -26,6 +26,8 @@ const cleanupTempFile = (filePath) => {
 };
 // Define temp directory path
 const TEMP_DIR = path.join(os.tmpdir(), 'docx-mcp-temp');
+// Track temp files per session for cleanup on session close
+const sessionTempFiles = new Map();
 // Shared functions for DOCX processing
 async function extractText(file_path) {
     const absolutePath = path.resolve(file_path);
@@ -209,12 +211,6 @@ server.tool('extract_text', 'Extract plain text content from a DOCX file', {
             isError: true,
         };
     }
-    finally {
-        // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(TEMP_DIR)) {
-            cleanupTempFile(file_path);
-        }
-    }
 });
 // Tool to convert DOCX to HTML with formatting preserved
 server.tool('convert_to_html', 'Convert DOCX file to HTML with formatting preserved', {
@@ -246,12 +242,6 @@ server.tool('convert_to_html', 'Convert DOCX file to HTML with formatting preser
             isError: true,
         };
     }
-    finally {
-        // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(TEMP_DIR)) {
-            cleanupTempFile(file_path);
-        }
-    }
 });
 // Tool to analyze document structure and formatting
 server.tool('analyze_structure', 'Analyze document structure, headings, and formatting elements', {
@@ -278,12 +268,6 @@ server.tool('analyze_structure', 'Analyze document structure, headings, and form
             ],
             isError: true,
         };
-    }
-    finally {
-        // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(TEMP_DIR)) {
-            cleanupTempFile(file_path);
-        }
     }
 });
 // Tool to extract images from DOCX
@@ -316,12 +300,6 @@ server.tool('extract_images', 'Extract and list images from a DOCX file', {
             isError: true,
         };
     }
-    finally {
-        // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(TEMP_DIR)) {
-            cleanupTempFile(file_path);
-        }
-    }
 });
 // Tool to convert DOCX to Markdown
 server.tool('convert_to_markdown', 'Convert DOCX file to Markdown format', {
@@ -348,12 +326,6 @@ server.tool('convert_to_markdown', 'Convert DOCX file to Markdown format', {
             ],
             isError: true,
         };
-    }
-    finally {
-        // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(TEMP_DIR)) {
-            cleanupTempFile(file_path);
-        }
     }
 });
 // Check if HTTP mode is enabled
@@ -383,9 +355,21 @@ if (useHttp) {
     if (!fs.existsSync(TEMP_DIR)) {
         fs.mkdirSync(TEMP_DIR, { recursive: true });
     }
-    // Create MCP HTTP transport
+    // Create MCP HTTP transport with session management for temp file cleanup
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        onsessioninitialized: (sessionId) => {
+            // Initialize tracking set for this session
+            sessionTempFiles.set(sessionId, new Set());
+        },
+        onsessionclosed: (sessionId) => {
+            // Clean up all temp files for this session
+            const files = sessionTempFiles.get(sessionId);
+            if (files) {
+                files.forEach(filePath => cleanupTempFile(filePath));
+                sessionTempFiles.delete(sessionId);
+            }
+        },
     });
     // Connect the MCP server to the HTTP transport
     await server.connect(transport);
@@ -393,19 +377,27 @@ if (useHttp) {
     app.post('/mcp', (req, res) => {
         transport.handleRequest(req, res, req.body);
     });
-    // Additional file upload endpoints for convenience (not part of MCP spec)
+    // File upload endpoint that tracks files for session cleanup
     app.post('/upload', upload.single('file'), (req, res) => {
         const tempFilePath = req.file?.path;
         if (!tempFilePath) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
+        // Get session ID from header
+        const sessionId = req.headers['mcp-session-id'];
+        if (sessionId) {
+            // Track the file for this session
+            const files = sessionTempFiles.get(sessionId);
+            if (files) {
+                files.add(tempFilePath);
+            }
+        }
         // Return the temp file path that can be used with MCP tools
         res.json({
             file_path: tempFilePath,
             original_name: req.file.originalname,
-            message: 'File uploaded successfully. Use the file_path with MCP tools.'
+            message: 'File uploaded successfully. Use the file_path with MCP tools. File will be deleted when the session closes.'
         });
-        // Note: File will be cleaned up by the MCP tool after processing
     });
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {

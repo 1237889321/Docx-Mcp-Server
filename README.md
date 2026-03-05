@@ -105,7 +105,7 @@ USE_HTTP=true node build/index.js
 
 The server will start on port 3000 (configurable via `PORT` environment variable).
 
-**Note:** Uploaded files are temporarily stored in the OS temp directory (e.g., `/tmp` on Linux/Mac, `%TEMP%` on Windows) with namespace `docx-mcp-temp`. Files are automatically cleaned up after processing.
+**Note:** Uploaded files are temporarily stored in the OS temp directory (e.g., `/tmp` on Linux/Mac, `%TEMP%` on Windows) with namespace `docx-mcp-temp`. Files are kept for the duration of the session and automatically cleaned up when the session closes.
 
 ### HTTP API Endpoints
 
