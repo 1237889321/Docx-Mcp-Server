@@ -14,15 +14,19 @@
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
     "prepare": "npm run build",
     "watch": "tsc --watch",
-    "inspector": "npx @modelcontextprotocol/inspector build/index.js"
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "start": "node build/index.js",
+    "start:http": "USE_HTTP=true node build/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.1",
-    "mammoth": "^1.9.1",
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
+    "mammoth": "^1.11.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^20.11.24",
+    "@types/node": "^20.19.35",
     "typescript": "^5.8.3"
   }
 }

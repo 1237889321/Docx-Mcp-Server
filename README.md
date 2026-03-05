@@ -89,6 +89,44 @@ Convert DOCX file to Markdown format.
 - Word count
 - Processing messages
 
+## HTTP Server Mode
+
+In addition to MCP stdio mode, this server can run as a standalone HTTP server for direct API access.
+
+### Running in HTTP Mode
+
+Set the `USE_HTTP` environment variable to `true`:
+
+```bash
+USE_HTTP=true npm start
+# or
+USE_HTTP=true node build/index.js
+```
+
+The server will start on port 3000 (configurable via `PORT` environment variable).
+
+### HTTP API Endpoints
+
+All MCP tools are available as HTTP POST endpoints:
+
+- `POST /extract_text` - Extract text
+- `POST /convert_to_html` - Convert to HTML
+- `POST /analyze_structure` - Analyze structure
+- `POST /extract_images` - Extract images
+- `POST /convert_to_markdown` - Convert to Markdown
+
+**Request Body:** JSON with the same parameters as the MCP tools.
+
+**Response:** JSON with the tool's return data.
+
+Example:
+
+```bash
+curl -X POST http://localhost:3000/extract_text \
+  -H "Content-Type: application/json" \
+  -d '{"file_path": "/path/to/document.docx"}'
+```
+
 ## Installation
 
 ```bash
