@@ -9,6 +9,7 @@ import { createRequire } from 'module';
 import express from 'express';
 import process from 'process';
 import multer from 'multer';
+import os from 'os';
 // Create require for CommonJS modules
 const require = createRequire(import.meta.url);
 const mammoth = require('mammoth');
@@ -23,6 +24,8 @@ const cleanupTempFile = (filePath) => {
         console.error('Error cleaning up temp file:', error);
     }
 };
+// Define temp directory path
+const TEMP_DIR = path.join(os.tmpdir(), 'docx-mcp-temp');
 // Shared functions for DOCX processing
 async function extractText(file_path) {
     const absolutePath = path.resolve(file_path);
@@ -208,7 +211,7 @@ server.tool('extract_text', 'Extract plain text content from a DOCX file', {
     }
     finally {
         // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        if (file_path.startsWith(TEMP_DIR)) {
             cleanupTempFile(file_path);
         }
     }
@@ -245,7 +248,7 @@ server.tool('convert_to_html', 'Convert DOCX file to HTML with formatting preser
     }
     finally {
         // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        if (file_path.startsWith(TEMP_DIR)) {
             cleanupTempFile(file_path);
         }
     }
@@ -278,7 +281,7 @@ server.tool('analyze_structure', 'Analyze document structure, headings, and form
     }
     finally {
         // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        if (file_path.startsWith(TEMP_DIR)) {
             cleanupTempFile(file_path);
         }
     }
@@ -315,7 +318,7 @@ server.tool('extract_images', 'Extract and list images from a DOCX file', {
     }
     finally {
         // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        if (file_path.startsWith(TEMP_DIR)) {
             cleanupTempFile(file_path);
         }
     }
@@ -348,7 +351,7 @@ server.tool('convert_to_markdown', 'Convert DOCX file to Markdown format', {
     }
     finally {
         // Clean up temp files uploaded via HTTP
-        if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        if (file_path.startsWith(TEMP_DIR)) {
             cleanupTempFile(file_path);
         }
     }
@@ -361,7 +364,7 @@ if (useHttp) {
     app.use(express.json());
     // Configure multer for file uploads (for file-based tools)
     const upload = multer({
-        dest: path.join(process.cwd(), 'temp'),
+        dest: TEMP_DIR,
         fileFilter: (req, file, cb) => {
             // Only allow .docx files
             if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
@@ -377,9 +380,8 @@ if (useHttp) {
         }
     });
     // Ensure temp directory exists
-    const tempDir = path.join(process.cwd(), 'temp');
-    if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
+    if (!fs.existsSync(TEMP_DIR)) {
+        fs.mkdirSync(TEMP_DIR, { recursive: true });
     }
     // Create MCP HTTP transport
     const transport = new StreamableHTTPServerTransport({
