@@ -171,7 +171,7 @@ async function convertToMarkdown(file_path: string) {
 
 const server = new McpServer({
   name: 'docx-format-server',
-  version: '0.2.0',
+  version: '0.3.0',
 })
 
 // Tool to extract text content from DOCX files

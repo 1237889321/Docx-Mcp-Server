@@ -268,6 +268,7 @@ The Inspector will provide a URL to access debugging tools in your browser.
 
 ## Version History
 
+- **v0.3.0**: Added HTTP server mode with REST API endpoints alongside MCP stdio mode
 - **v0.2.0**: Complete rewrite with mammoth library, added 5 comprehensive tools
 - **v0.1.0**: Basic text extraction with docx-parser (deprecated)
 
