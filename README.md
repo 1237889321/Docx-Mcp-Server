@@ -107,31 +107,61 @@ The server will start on port 3000 (configurable via `PORT` environment variable
 
 ### HTTP API Endpoints
 
-All MCP tools are available as HTTP POST endpoints with multipart file upload:
+### HTTP API Endpoints
 
-- `POST /extract_text` - Extract text
-- `POST /convert_to_html` - Convert to HTML
-- `POST /analyze_structure` - Analyze structure
-- `POST /extract_images` - Extract images
-- `POST /convert_to_markdown` - Convert to Markdown
+The HTTP server provides MCP-compatible endpoints:
 
-**Request Format:** Multipart form-data with:
-- `file`: The .docx file to process
-- Additional parameters as form fields (for endpoints that need them)
+- `POST /mcp` - MCP JSON-RPC endpoint (compatible with MCP specifications)
+- `POST /upload` - File upload endpoint for convenience
 
-**Response:** JSON with the tool's return data.
+#### MCP JSON-RPC Endpoint
 
-Example usage with curl:
+The `/mcp` endpoint accepts standard MCP JSON-RPC messages. Use this for programmatic access compatible with MCP clients.
+
+Example MCP request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "extract_text",
+    "arguments": {
+      "file_path": "/path/to/document.docx"
+    }
+  }
+}
+```
+
+#### File Upload Workflow
+
+For web applications, use the two-step process:
+
+1. **Upload file**: `POST /upload` with multipart form-data
+2. **Call MCP tool**: Use the returned `file_path` with the `/mcp` endpoint
+
+Example:
 
 ```bash
-# Extract text
-curl -X POST -F "file=@document.docx" http://localhost:3000/extract_text
+# Step 1: Upload file
+curl -X POST -F "file=@document.docx" http://localhost:3000/upload
+# Returns: {"file_path": "/path/to/temp/file", "original_name": "document.docx"}
 
-# Convert to HTML with custom styling
-curl -X POST -F "file=@document.docx" -F "include_styles=false" http://localhost:3000/convert_to_html
-
-# Extract images to a directory
-curl -X POST -F "file=@document.docx" -F "output_dir=./images" http://localhost:3000/extract_images
+# Step 2: Call MCP tool
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "extract_text",
+      "arguments": {
+        "file_path": "/path/to/temp/file"
+      }
+    }
+  }'
 ```
 
 ## Installation

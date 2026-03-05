@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { z } from 'zod'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -12,6 +13,17 @@ import multer from 'multer'
 // Create require for CommonJS modules
 const require = createRequire(import.meta.url)
 const mammoth = require('mammoth')
+
+// Helper function to cleanup temp file
+const cleanupTempFile = (filePath: string) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+  } catch (error) {
+    console.error('Error cleaning up temp file:', error)
+  }
+}
 
 // Shared functions for DOCX processing
 async function extractText(file_path: string) {
@@ -203,6 +215,11 @@ server.tool(
         ],
         isError: true,
       }
+    } finally {
+      // Clean up temp files uploaded via HTTP
+      if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        cleanupTempFile(file_path)
+      }
     }
   }
 )
@@ -239,6 +256,11 @@ server.tool(
         ],
         isError: true,
       }
+    } finally {
+      // Clean up temp files uploaded via HTTP
+      if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        cleanupTempFile(file_path)
+      }
     }
   }
 )
@@ -270,6 +292,11 @@ server.tool(
           },
         ],
         isError: true,
+      }
+    } finally {
+      // Clean up temp files uploaded via HTTP
+      if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        cleanupTempFile(file_path)
       }
     }
   }
@@ -307,6 +334,11 @@ server.tool(
         ],
         isError: true,
       }
+    } finally {
+      // Clean up temp files uploaded via HTTP
+      if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        cleanupTempFile(file_path)
+      }
     }
   }
 )
@@ -339,6 +371,11 @@ server.tool(
         ],
         isError: true,
       }
+    } finally {
+      // Clean up temp files uploaded via HTTP
+      if (file_path.startsWith(path.join(process.cwd(), 'temp'))) {
+        cleanupTempFile(file_path)
+      }
     }
   }
 )
@@ -347,11 +384,11 @@ server.tool(
 const useHttp = process.env.USE_HTTP === 'true'
 
 if (useHttp) {
-  // HTTP Server Mode
+  // MCP HTTP Server Mode - compatible with MCP specifications
   const app = express()
   app.use(express.json())
 
-  // Configure multer for file uploads
+  // Configure multer for file uploads (for file-based tools)
   const upload = multer({
     dest: path.join(process.cwd(), 'temp'),
     fileFilter: (req, file, cb) => {
@@ -374,107 +411,41 @@ if (useHttp) {
     fs.mkdirSync(tempDir, { recursive: true })
   }
 
-  // Helper function to cleanup temp file
-  const cleanupTempFile = (filePath: string) => {
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
-      }
-    } catch (error) {
-      console.error('Error cleaning up temp file:', error)
-    }
-  }
-
-  // HTTP endpoints with file upload
-  app.post('/extract_text', upload.single('file'), async (req: Request, res: Response) => {
-    const tempFilePath = (req as any).file?.path
-    if (!tempFilePath) {
-      return res.status(400).json({ error: 'No file uploaded' })
-    }
-
-    try {
-      const result = await extractText(tempFilePath)
-      res.json(result)
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
-      res.status(500).json({ error: `Error extracting text: ${message}` })
-    } finally {
-      cleanupTempFile(tempFilePath)
-    }
+  // Create MCP HTTP transport
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
   })
 
-  app.post('/convert_to_html', upload.single('file'), async (req: Request, res: Response) => {
-    const tempFilePath = (req as any).file?.path
-    if (!tempFilePath) {
-      return res.status(400).json({ error: 'No file uploaded' })
-    }
+  // Connect the MCP server to the HTTP transport
+  await server.connect(transport)
 
-    try {
-      const include_styles = req.body.include_styles === 'true' || req.body.include_styles === true
-      const result = await convertToHtml(tempFilePath, include_styles)
-      res.json(result)
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
-      res.status(500).json({ error: `Error converting to HTML: ${message}` })
-    } finally {
-      cleanupTempFile(tempFilePath)
-    }
+  // MCP-compatible HTTP endpoint
+  app.post('/mcp', (req, res) => {
+    transport.handleRequest(req, res, req.body)
   })
 
-  app.post('/analyze_structure', upload.single('file'), async (req: Request, res: Response) => {
+  // Additional file upload endpoints for convenience (not part of MCP spec)
+  app.post('/upload', upload.single('file'), (req, res) => {
     const tempFilePath = (req as any).file?.path
     if (!tempFilePath) {
       return res.status(400).json({ error: 'No file uploaded' })
     }
 
-    try {
-      const result = await analyzeStructure(tempFilePath)
-      res.json(result)
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
-      res.status(500).json({ error: `Error analyzing structure: ${message}` })
-    } finally {
-      cleanupTempFile(tempFilePath)
-    }
-  })
+    // Return the temp file path that can be used with MCP tools
+    res.json({
+      file_path: tempFilePath,
+      original_name: (req as any).file.originalname,
+      message: 'File uploaded successfully. Use the file_path with MCP tools.'
+    })
 
-  app.post('/extract_images', upload.single('file'), async (req: Request, res: Response) => {
-    const tempFilePath = (req as any).file?.path
-    if (!tempFilePath) {
-      return res.status(400).json({ error: 'No file uploaded' })
-    }
-
-    try {
-      const result = await extractImages(tempFilePath, req.body.output_dir)
-      res.json(result)
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
-      res.status(500).json({ error: `Error extracting images: ${message}` })
-    } finally {
-      cleanupTempFile(tempFilePath)
-    }
-  })
-
-  app.post('/convert_to_markdown', upload.single('file'), async (req: Request, res: Response) => {
-    const tempFilePath = (req as any).file?.path
-    if (!tempFilePath) {
-      return res.status(400).json({ error: 'No file uploaded' })
-    }
-
-    try {
-      const result = await convertToMarkdown(tempFilePath)
-      res.json(result)
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
-      res.status(500).json({ error: `Error converting to Markdown: ${message}` })
-    } finally {
-      cleanupTempFile(tempFilePath)
-    }
+    // Note: File will be cleaned up by the MCP tool after processing
   })
 
   const PORT = process.env.PORT || 3000
   app.listen(PORT, () => {
-    console.log(`Streamable HTTP DOCX server running on port ${PORT}`)
+    console.log(`MCP-compatible HTTP DOCX server running on port ${PORT}`)
+    console.log(`MCP endpoint: POST http://localhost:${PORT}/mcp`)
+    console.log(`File upload endpoint: POST http://localhost:${PORT}/upload`)
   })
 } else {
   // MCP Stdio Mode
