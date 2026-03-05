@@ -15,22 +15,10 @@ import os from 'os'
 const require = createRequire(import.meta.url)
 const mammoth = require('mammoth')
 
-// Helper function to cleanup temp file
-const cleanupTempFile = (filePath: string) => {
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
-  } catch (error) {
-    console.error('Error cleaning up temp file:', error)
-  }
-}
+
 
 // Define temp directory path
 const TEMP_DIR = path.join(os.tmpdir(), 'docx-mcp-temp')
-
-// Track temp files per session for cleanup on session close
-const sessionTempFiles = new Map<string, Set<string>>()
 
 // Shared functions for DOCX processing
 async function extractText(file_path: string) {
@@ -392,21 +380,9 @@ if (useHttp) {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
   }
 
-  // Create MCP HTTP transport with session management for temp file cleanup
+  // Create MCP HTTP transport
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    onsessioninitialized: (sessionId: string) => {
-      // Initialize tracking set for this session
-      sessionTempFiles.set(sessionId, new Set<string>())
-    },
-    onsessionclosed: (sessionId: string) => {
-      // Clean up all temp files for this session
-      const files = sessionTempFiles.get(sessionId)
-      if (files) {
-        files.forEach(filePath => cleanupTempFile(filePath))
-        sessionTempFiles.delete(sessionId)
-      }
-    },
   })
 
   // Connect the MCP server to the HTTP transport
@@ -417,7 +393,7 @@ if (useHttp) {
     transport.handleRequest(req, res, req.body)
   })
 
-  // File upload endpoint that tracks files for session cleanup
+  // File upload endpoint that saves files with session ID
   app.post('/upload', upload.single('file'), (req, res) => {
     const tempFilePath = (req as any).file?.path
     if (!tempFilePath) {
@@ -426,19 +402,29 @@ if (useHttp) {
 
     // Get session ID from header
     const sessionId = req.headers['mcp-session-id'] as string | undefined
-    if (sessionId) {
-      // Track the file for this session
-      const files = sessionTempFiles.get(sessionId)
-      if (files) {
-        files.add(tempFilePath)
-      }
+    if (!sessionId) {
+      fs.unlinkSync(tempFilePath)
+      return res.status(400).json({ error: 'Session ID required' })
     }
 
-    // Return the temp file path that can be used with MCP tools
+    // Create session-based filename
+    const sessionFileName = `docx-session-${sessionId}.docx`
+    const sessionFilePath = path.join(TEMP_DIR, sessionFileName)
+
+    // Remove previous file if it exists (overwrite)
+    if (fs.existsSync(sessionFilePath)) {
+      fs.unlinkSync(sessionFilePath)
+    }
+
+    // Rename temp file to session-based filename
+    fs.renameSync(tempFilePath, sessionFilePath)
+
+    // Return the session file path that can be used with MCP tools
     res.json({
-      file_path: tempFilePath,
+      file_path: sessionFilePath,
       original_name: (req as any).file.originalname,
-      message: 'File uploaded successfully. Use the file_path with MCP tools. File will be deleted when the session closes.'
+      session_id: sessionId,
+      message: 'File uploaded successfully. Use the file_path with MCP tools.'
     })
   })
 
