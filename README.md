@@ -107,7 +107,7 @@ The server will start on port 3000 (configurable via `PORT` environment variable
 
 ### HTTP API Endpoints
 
-All MCP tools are available as HTTP POST endpoints:
+All MCP tools are available as HTTP POST endpoints with multipart file upload:
 
 - `POST /extract_text` - Extract text
 - `POST /convert_to_html` - Convert to HTML
@@ -115,16 +115,23 @@ All MCP tools are available as HTTP POST endpoints:
 - `POST /extract_images` - Extract images
 - `POST /convert_to_markdown` - Convert to Markdown
 
-**Request Body:** JSON with the same parameters as the MCP tools.
+**Request Format:** Multipart form-data with:
+- `file`: The .docx file to process
+- Additional parameters as form fields (for endpoints that need them)
 
 **Response:** JSON with the tool's return data.
 
-Example:
+Example usage with curl:
 
 ```bash
-curl -X POST http://localhost:3000/extract_text \
-  -H "Content-Type: application/json" \
-  -d '{"file_path": "/path/to/document.docx"}'
+# Extract text
+curl -X POST -F "file=@document.docx" http://localhost:3000/extract_text
+
+# Convert to HTML with custom styling
+curl -X POST -F "file=@document.docx" -F "include_styles=false" http://localhost:3000/convert_to_html
+
+# Extract images to a directory
+curl -X POST -F "file=@document.docx" -F "output_dir=./images" http://localhost:3000/extract_images
 ```
 
 ## Installation

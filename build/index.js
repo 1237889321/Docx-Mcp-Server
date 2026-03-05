@@ -7,6 +7,7 @@ import * as path from 'path';
 import { createRequire } from 'module';
 import express from 'express';
 import process from 'process';
+import multer from 'multer';
 // Create require for CommonJS modules
 const require = createRequire(import.meta.url);
 const mammoth = require('mammoth');
@@ -316,60 +317,124 @@ if (useHttp) {
     // HTTP Server Mode
     const app = express();
     app.use(express.json());
-    // HTTP endpoints mirroring MCP tools
-    app.post('/extract_text', async (req, res) => {
+    // Configure multer for file uploads
+    const upload = multer({
+        dest: path.join(process.cwd(), 'temp'),
+        fileFilter: (req, file, cb) => {
+            // Only allow .docx files
+            if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                path.extname(file.originalname).toLowerCase() === '.docx') {
+                cb(null, true);
+            }
+            else {
+                cb(new Error('Only .docx files are allowed'));
+            }
+        },
+        limits: {
+            fileSize: 50 * 1024 * 1024, // 50MB limit
+        }
+    });
+    // Ensure temp directory exists
+    const tempDir = path.join(process.cwd(), 'temp');
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+    }
+    // Helper function to cleanup temp file
+    const cleanupTempFile = (filePath) => {
         try {
-            const { file_path } = req.body;
-            const result = await extractText(file_path);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+        catch (error) {
+            console.error('Error cleaning up temp file:', error);
+        }
+    };
+    // HTTP endpoints with file upload
+    app.post('/extract_text', upload.single('file'), async (req, res) => {
+        const tempFilePath = req.file?.path;
+        if (!tempFilePath) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+        try {
+            const result = await extractText(tempFilePath);
             res.json(result);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             res.status(500).json({ error: `Error extracting text: ${message}` });
         }
+        finally {
+            cleanupTempFile(tempFilePath);
+        }
     });
-    app.post('/convert_to_html', async (req, res) => {
+    app.post('/convert_to_html', upload.single('file'), async (req, res) => {
+        const tempFilePath = req.file?.path;
+        if (!tempFilePath) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
         try {
-            const { file_path, include_styles = true } = req.body;
-            const result = await convertToHtml(file_path, include_styles);
+            const include_styles = req.body.include_styles === 'true' || req.body.include_styles === true;
+            const result = await convertToHtml(tempFilePath, include_styles);
             res.json(result);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             res.status(500).json({ error: `Error converting to HTML: ${message}` });
         }
+        finally {
+            cleanupTempFile(tempFilePath);
+        }
     });
-    app.post('/analyze_structure', async (req, res) => {
+    app.post('/analyze_structure', upload.single('file'), async (req, res) => {
+        const tempFilePath = req.file?.path;
+        if (!tempFilePath) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
         try {
-            const { file_path } = req.body;
-            const result = await analyzeStructure(file_path);
+            const result = await analyzeStructure(tempFilePath);
             res.json(result);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             res.status(500).json({ error: `Error analyzing structure: ${message}` });
         }
+        finally {
+            cleanupTempFile(tempFilePath);
+        }
     });
-    app.post('/extract_images', async (req, res) => {
+    app.post('/extract_images', upload.single('file'), async (req, res) => {
+        const tempFilePath = req.file?.path;
+        if (!tempFilePath) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
         try {
-            const { file_path, output_dir } = req.body;
-            const result = await extractImages(file_path, output_dir);
+            const result = await extractImages(tempFilePath, req.body.output_dir);
             res.json(result);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             res.status(500).json({ error: `Error extracting images: ${message}` });
         }
+        finally {
+            cleanupTempFile(tempFilePath);
+        }
     });
-    app.post('/convert_to_markdown', async (req, res) => {
+    app.post('/convert_to_markdown', upload.single('file'), async (req, res) => {
+        const tempFilePath = req.file?.path;
+        if (!tempFilePath) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
         try {
-            const { file_path } = req.body;
-            const result = await convertToMarkdown(file_path);
+            const result = await convertToMarkdown(tempFilePath);
             res.json(result);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             res.status(500).json({ error: `Error converting to Markdown: ${message}` });
+        }
+        finally {
+            cleanupTempFile(tempFilePath);
         }
     });
     const PORT = process.env.PORT || 3000;
